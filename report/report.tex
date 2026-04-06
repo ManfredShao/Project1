@@ -1,0 +1,109 @@
+% CS311H / AI Course Project 1 --- Information Exposure Balancing
+% Compile: pdflatex report.tex (twice if needed for references)
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage{cite}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage{hyperref}
+
+\begin{document}
+
+\title{Balancing Competing Information Exposure:\\
+Greedy, Evolutionary, and Monte Carlo Evaluation}
+
+\author{\IEEEauthorblockN{Shao Haolin\\12413323}\\
+\IEEEauthorblockA{CS311H --- Artificial Intelligence Course Project 1}}
+
+\maketitle
+
+\begin{abstract}
+We study the \emph{information exposure balancing} problem on directed social graphs with independent cascade (IC)-style diffusion and one-hop exposure sets. We implement a simulation-based greedy heuristic (\texttt{IEMP\_Heur.py}), an evolutionary algorithm (EA) over a $2n$-bit encoding (\texttt{IEMP\_Evol.py}), and two evaluators: Monte Carlo forward simulation (\texttt{Evaluator\_mc.py}, used for official grading) and a reverse-reachability (RR) estimator (\texttt{Evaluator\_RRset.py}). Local experiments on the provided \texttt{Testcase (localtest)} instances show that the greedy heuristic is strongest on small dense graphs, while the EA benefits from enforcing a strict budget of $k$ additional seeds. We document three empirical phenomena: a \emph{density trap} where MC and RR disagree slightly on dense graphs, \emph{gene shrinkage} in the EA when the fitness function under-penalizes under-budget individuals, and an \emph{echo-chamber} effect explaining weak initial states and why naive diversification improves the baseline objective.
+\end{abstract}
+
+\section{Introduction}
+Political campaigns and recommender systems often seed competing messages in a network. The project objective is to choose up to $k$ extra seed nodes, split between two teams, so that \emph{as many users as possible} see \emph{both} exposures (or neither), i.e., we maximize agreement of binary reception under stochastic diffusion.
+
+\section{Problem Formulation}
+Let $G=(V,E)$ with $|V|=n$. Each directed edge $(u,v)$ carries activation probabilities $p_{uv}^{(1)}$ and $p_{uv}^{(2)}$ for the two campaigns. Given initial seed sets $I_1,I_2$ and budget $k$, we choose disjoint additional sets $S_1,S_2$ with $|S_1|+|S_2|\le k$. Let $A_1,A_2$ be the (random) activated node sets under the IC process from $U_1=I_1\cup S_1$ and $U_2=I_2\cup S_2$. Define one-hop exposure
+\begin{equation}
+R_\ell(U_\ell) = A_\ell \;\cup\; \bigcup_{u\in A_\ell} \{v : (u,v)\in E\},\quad \ell\in\{1,2\}.
+\end{equation}
+The score on one sampled world is
+\begin{equation}
+\Phi = n - \bigl|R_1(U_1)\,\triangle\, R_2(U_2)\bigr|
+\end{equation}
+where $\triangle$ denotes symmetric difference. The reported grade uses the expectation $\mathbb{E}[\Phi]$ estimated by Monte Carlo (MC).
+
+\section{Implemented Methods}
+
+\subsection{Monte Carlo Evaluator (Official)}
+\texttt{Evaluator\_mc.py} performs forward IC simulations (5000 runs by default) and averages $\Phi$. We fixed a bug where budget violations wrote \texttt{0.0/n} instead of a newline-terminated \texttt{0.0}, which could corrupt output files.
+
+\subsection{RR-Set Estimator (Analysis Only)}
+\texttt{Evaluator\_RRset.py} builds a reverse graph and samples random targets; each sample estimates the probability that both teams agree on reaching the target's \emph{activation} set, then scales by $n$. This follows the spirit of reverse-reachability sketches used in influence maximization~\cite{kempe2003}. The course grader uses \textbf{only MC}; we keep RR for cross-validation and discussion. We removed a spurious \texttt{from turtle import st} import that prevented the script from running on headless Python (it triggered a \texttt{tkinter} dependency).
+
+\subsection{Greedy Heuristic}
+\texttt{IEMP\_Heur.py} maintains $S_1,S_2$ and greedily adds one node per iteration until $|S_1|+|S_2|=k$. For each candidate $i$, it averages over 100 live-graph samples a marginal score related to how the \emph{new} exposure mass intersects the opponent's current exposure, penalizing mass that falls outside the opponent's exposure (see source for the exact counting).
+
+\subsection{Evolutionary Algorithm}
+\texttt{IEMP\_Evol.py} encodes $(S_1,S_2)$ as a binary vector of length $2n$ (first half team~1, second half team~2). Fitness uses the same $\Phi$ estimator as training with 100 pre-sampled graphs per generation. We applied three fixes motivated by observed failure modes (Section~\ref{sec:discussion}):
+\begin{itemize}
+  \item \textbf{Exact-$k$ initialization:} each individual has exactly $k$ bits set (the old code sampled between $1$ and $k$).
+  \item \textbf{Repair after crossover:} two-point crossover does not preserve Hamming weight; we repair offspring to exactly $k$ ones before mutation.
+  \item \textbf{Fitness constraint:} fitness is heavily penalized unless $\sum_i x_i = k$, so under-budget genomes cannot win due to MC noise.
+\end{itemize}
+
+\section{Experimental Setup}
+We used the bundled \texttt{Testcase (localtest)} folders. \textbf{Map~1} (``Case~0'' style) has $n=475$ and $m=13289$ edges (average undirected degree $\approx 28$) --- a \emph{dense} instance. \textbf{Map~2} has $n=36742$ and $m=49248$ --- comparatively \emph{sparse}. Stored local scores:
+\begin{itemize}
+  \item \texttt{Evaluator/map1}: MC $424.694$ vs.\ RR $424.650$ (\texttt{mc\_score.txt}, \texttt{rr\_score.txt}).
+  \item \texttt{Evaluator/map2}: MC $35561.536$ vs.\ RR $35617.695$.
+\end{itemize}
+We re-ran the improved EA on \texttt{Evolutionary/map1} with matching network and seed files; MC evaluation rose from $444.798$ (stored) to $\approx 451.76$ (new run, stochastic).
+
+\section{Results}
+Table~\ref{tab:results} summarizes representative MC scores. Numbers vary slightly between runs because MC is stochastic; the directional conclusions are stable.
+
+\begin{table}[t]
+\centering
+\caption{Monte Carlo $\mathbb{E}[\Phi]$ (representative local runs).}
+\label{tab:results}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Setting & Map~1 (dense) & Map~2 (sparse) \\
+\midrule
+Baseline ($S_1=S_2=\emptyset$), MC & $\approx 400$ & $\approx 35426$ \\
+Heuristic output (Evaluator paths) & $\approx 447.7$ & --- \\
+EA before strict-$k$ fix (stored) & $444.798$ & $13713.653$ \\
+EA after strict-$k$ fix (re-run) & $\approx 451.8$ & (not re-benchmarked here) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+On map~1 with the \texttt{Evolutionary} seed file, the greedy heuristic achieved MC $\approx 452.22$ vs.\ the repaired EA $\approx 451.76$ in our run --- still competitive after the fix.
+
+\section{Discussion: Observed Phenomena}
+\label{sec:discussion}
+
+\subsection{Density trap: MC vs.\ RR on Case~0}
+On the dense map~1 instance, MC slightly \emph{exceeded} RR in the stored evaluator outputs, whereas on sparse map~2 RR reported a higher value. Dense graphs feature heavy overlap of reverse-reachability sets: many targets share large portions of their ancestor cones, so the RR estimator's independent samples are highly correlated and its empirical average need not match the forward MC expectation for a \emph{fixed} finite sample budget. Moreover, RR here tests agreement on \emph{activation} paths while $\Phi$ uses \emph{one-hop exposure} sets in the forward evaluator --- any modeling mismatch introduces a small systematic gap. Finally, variance scales with graph structure; $10^4$ RR trials on $n=475$ behaves differently from $5000$ forward worlds on the exposure objective. Together, this explains why Case~0 is a regime where ``MC looks better'' than RR in our logs even though both target the same mathematical expectation in the limit.
+
+\subsection{Gene shrinkage and a fixed budget}
+The original EA only penalized genomes with \emph{more} than $k$ ones. Individuals with fewer than $k$ seeds use fewer random activations per diffusion sample, so their estimated $\Phi$ has different variance; sporadically they appear competitive under 100-sample fitness. Tournament selection then preserved \emph{under-budget} chromosomes, and crossover fragmented bit patterns, yielding outputs such as $|S_1|+|S_2|<k$ --- \emph{gene shrinkage}. Enforcing $\sum x_i = k$ via initialization, repair, and a harsh fitness penalty removes that loophole and better matches the evaluator constraint, which improved map~1 MC scores markedly.
+
+\subsection{Echo chambers, balance, and ``random adds''}
+If $I_1$ and $I_2$ are sampled adversarially or from two non-overlapping communities, typical cascades activate disjoint or weakly overlapping regions. Then $R_1$ and $R_2$ differ on many vertices, so $|R_1\triangle R_2|$ is large and $\Phi=n-|R_1\triangle R_2|$ is far below $n$ --- a strong \emph{echo-chamber} initialization. Adding seeds \emph{without} optimizing can still raise $\Phi$: each new seed stochastically expands both exposure sets; vertices that were previously ``seen only by one side'' may flip to agreement (both or neither) when the opposite cascade eventually reaches them. Formally, let $X_v=\mathbf{1}[v\in R_1]$, $Y_v=\mathbf{1}[v\in R_2]$; $\Phi = n-\sum_v |X_v-Y_v|$. Random expansion tends to increase $\mathbb{P}[X_v=Y_v]$ toward the mixing implied by shared graph structure, so even a naive baseline beats the raw partisan initialization --- consistent with receiving partial credit relative to an even worse starting point.
+
+\section{Conclusion}
+We aligned the EA with the grading budget, repaired evaluator output bugs, and documented when RR diagnostics diverge from forward MC. Future work could reuse RR sketches only for node \emph{ranking} while always scoring with MC, and reduce EA cost by reusing live graphs across generations.
+
+\begin{thebibliography}{1}
+\bibitem{kempe2003}
+D.~Kempe, J.~Kleinberg, and \'E.~Tardos,
+``Maximizing the spread of influence through a social network,''
+in \emph{Proc.\ ACM KDD}, 2003.
+\end{thebibliography}
+
+\end{document}

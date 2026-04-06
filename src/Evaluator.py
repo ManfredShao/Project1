@@ -107,7 +107,7 @@ def main():
     if len(B1) + len(B2) > args.budget:
         print("Error: Budget exceeded")
         with open(args.output, 'w') as f:
-            f.write("0.0/n")
+            f.write("0.0\n")
         return
 
     U1 = I1.union(B1)

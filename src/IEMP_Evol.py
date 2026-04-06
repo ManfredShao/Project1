@@ -95,9 +95,10 @@ def precompute_evol_data(graph, n, num_graphs=100):
 
 def fitness_eval(x, n, k, I1, I2, live_graphs_1, live_graphs_2, graph):
     num_ones = sum(x)
-    if num_ones > k:
-        return -num_ones  # Penalize solutions that exceed the budget
-    
+    if num_ones != k:
+        # Exact budget k is required; under-budget solutions used to dominate due to MC noise.
+        return -1e12 - abs(num_ones - k)
+
     S1 = {i for i in range(n) if x[i] == 1}
     S2 = {i-n for i in range(n, 2*n) if x[i] == 1}
 
@@ -117,13 +118,30 @@ def fitness_eval(x, n, k, I1, I2, live_graphs_1, live_graphs_2, graph):
 
     return phi/len(live_graphs_1)
 
-def generate_intial_population(pop_size, n, k):
+def repair_to_k(individual, k):
+    """Force exactly k ones (total |S1|+|S2|)."""
+    ind = individual.copy()
+    s = sum(ind)
+    if s == k:
+        return ind
+    ones_idx = [i for i, b in enumerate(ind) if b == 1]
+    zeros_idx = [i for i, b in enumerate(ind) if b == 0]
+    if s > k:
+        random.shuffle(ones_idx)
+        for i in ones_idx[: s - k]:
+            ind[i] = 0
+    else:
+        random.shuffle(zeros_idx)
+        for i in zeros_idx[: k - s]:
+            ind[i] = 1
+    return ind
+
+
+def generate_initial_population(pop_size, n, k):
     population = []
     for _ in range(pop_size):
-        individual = [0] * (2*n)
-        ones_count = random.randint(1, k)
-        position = random.sample(range(2*n), ones_count)
-        for pos in position:
+        individual = [0] * (2 * n)
+        for pos in random.sample(range(2 * n), k):
             individual[pos] = 1
         population.append(individual)
     return population
@@ -148,23 +166,10 @@ def mutation(individual, n, k):
         if random.random() < mutation_rate:
             mutated[i] = 1 - mutated[i]  # Flip the bit
 
-    if sum(mutated) > k:
-        # If mutation exceeds budget, randomly flip some bits back to 0
-        ones_indices = [i for i in range(2*n) if mutated[i] == 1]
-        random.shuffle(ones_indices)
-        for idx in ones_indices[:sum(mutated)-k]:
-            mutated[idx] = 0
-
-    elif sum(mutated) < k:
-        zero_indices = [i for i in range(2*n) if mutated[i] == 0]
-        random.shuffle(zero_indices)
-        for idx in zero_indices[:k-sum(mutated)]:
-            mutated[idx] = 1
-            
-    return mutated
+    return repair_to_k(mutated, k)
 
 def evolutionary_algorithm(n, graph, I1, I2, k, pop_size=50, generations=100):
-    population = generate_intial_population(pop_size, n, k)
+    population = generate_initial_population(pop_size, n, k)
     
     for gen in range(generations):
         live_graphs_1, live_graphs_2 = precompute_evol_data(graph, n)
@@ -174,6 +179,8 @@ def evolutionary_algorithm(n, graph, I1, I2, k, pop_size=50, generations=100):
             parent1 = binary_tournament_selection(population, fitnesses)
             parent2 = binary_tournament_selection(population, fitnesses)
             c1, c2 = two_point_crossover(parent1, parent2, n)
+            c1 = repair_to_k(c1, k)
+            c2 = repair_to_k(c2, k)
             c1 = mutation(c1, n, k)
             c2 = mutation(c2, n, k)
             offspring.extend([c1, c2])
@@ -190,7 +197,7 @@ def evolutionary_algorithm(n, graph, I1, I2, k, pop_size=50, generations=100):
         best_fitness = paired[0][1]
         print(f"Generation {gen+1}/{generations}: Best Fitness = {best_fitness:.2f}")
 
-    best_individual = population[0]
+    best_individual = repair_to_k(population[0], k)
     S1 = {i for i in range(n) if best_individual[i] == 1}
     S2 = {i-n for i in range(n, 2*n) if best_individual[i] == 1}
     return S1, S2
