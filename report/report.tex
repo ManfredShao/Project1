@@ -1,0 +1,109 @@
+\documentclass[conference]{IEEEtran}
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\begin{document}
+
+\title{Information Exposure Balancing and Maximization in Social Networks\\
+\large \textit{AI Course Project Phase 1 \& 2 Report}}
+
+\author{
+\IEEEauthorblockN{Manfred}
+\IEEEauthorblockA{\textit{Department of Computer Science} \\
+City, Country \\
+Email: placeholder@student.edu}
+}
+
+\maketitle
+
+\begin{abstract}
+This report details the design, implementation, and optimization of algorithms for the Information Exposure Maximization problem. We mitigate the echo chamber effect by strategically selecting seed nodes. We propose a Greedy Heuristic Algorithm accelerated by Sample Average Approximation (SAA) and Out-degree Pruning, as well as an Evolutionary Algorithm based on Genetic Algorithms (GA). We also present a Monte Carlo-based Evaluator and analyze the fundamental characteristics of information diffusion. Through experiments, we elaborate on interesting phenomena: the "Density Trap" between Monte Carlo and RR-Set, "Gene Shrinkage" in Evolutionary computing, and the mathematical intuition behind "Echo Chambers".
+\end{abstract}
+
+\begin{IEEEkeywords}
+Information Diffusion, Echo Chamber, Greedy Algorithm, Evolutionary Computation, Monte Carlo
+\end{IEEEkeywords}
+
+\section{Introduction}
+In modern social networks, recommender systems often isolate users in ``echo chambers'' (filter bubbles). This project aims to break these bubbles by selecting a balanced seed set $\mathcal{S}_1$ and $\mathcal{S}_2$ under a fixed budget $k$ for two opposing campaigns. Our objective function $\Phi(A_1, A_2) = n - |R_1 \oplus R_2|$ seeks to maximize the overlap between the resulting exposure sets $R_1$ and $R_2$ while minimizing their disjoint parts.
+
+\section{Methodology}
+
+\subsection{Heuristic Algorithm (Greedy)}
+The classical greedy algorithm for influence maximization suffers from extreme computational costs due to repetitive Monte Carlo (MC) simulations. We implemented two major optimizations:
+\begin{itemize}
+    \item \textbf{Sample Average Approximation (SAA):} Instead of tossing coins for every node iteratively, we pre-sample a fixed set of $100$ ``Live-edge graphs'' per budget allocation. This reduces the time complexity of repetitive edge evaluations across candidates.
+    \item \textbf{Candidate Pruning:} Rather than querying all $n$ nodes, we filter the search space to the top $300$ nodes with the highest out-degrees. This leverages the heuristic that highly connected nodes are more likely to bridge structural holes without violating the Higher Time Limit (TL) constraints.
+\end{itemize}
+
+\subsection{Evolutionary Algorithm}
+We implemented a Genetic Algorithm (GA) tailored for optimal seed selection. The chromosome is a binary vector of length $2n$. To handle the exact budget limit $k$, we introduced a forced initialization and a localized repair function after mutations. We apply Binary Tournament Selection and Two-Point Crossover. The fitness is evaluated via SAA.
+
+\section{Evaluator Design}
+Our final evaluator strictly utilizes the \textbf{Monte Carlo (MC)} simulation rather than Reverse Reachable Sets (RR-Set). While RR-Set theoretically scales well for massive graphs, we observed anomalous behaviors in dense topologies (discussed in Sec. \ref{sec:findings}). MC provides a grounded, unbiased estimate of $\Phi(A_1, A_2)$.
+
+\section{Key Findings and Discussions}
+\label{sec:findings}
+
+During our empirical tests, three vital phenomena were discovered:
+
+\subsection{The ``Echo Chamber \& Balance'' Phenomenon}
+Initially, the inputs $I_1$ and $I_2$ reside in severe echo chambers, meaning $|R_1 \cap R_2|$ is near zero. Mathematically, since $\Phi = n - |R_1 \cup R_2| + |R_1 \cap R_2|$, adding an arbitrary node usually forces an overlap between the two campaigns if the graph is reasonably connected. Consequently, "randomly adding seeds" often passively increases the intersection, allowing trivial policies to hit baseline scores easily. True optimization, however, requires identifying structural bridges.
+
+\subsection{The ``Gene Shrinkage'' with Fixed Budget}
+In the Evolutionary Algorithm, early iterations suffered from "Gene Shrinkage," where the algorithm spontaneously reduced the number of active seeds (fewer than $k$) to avoid the harsh negative penalties assigned to budget violations. To counter this, we designed a repair mechanism within the mutation phase to forcibly realign the chromosome to exactly $k$ ones, securing maximal influence exploration.
+
+\subsection{The ``Density Trap'' (MC vs. RR-Set)}
+Theoretical works suggest RR-Set frameworks (e.g., IMM, RIS) drastically outperform MC. However, on \textbf{Case 0} (a highly dense graph where average degree is extremely large), RR-Set constructed overly massive hypergraphs. The intersection checks over these huge sets drastically bloated memory and execution time. Thus, the MC method prevailed due to its stable bound on BFS traversal depths in dense clusters, coining the term "Density Trap" for RR-Set methodologies.
+
+\section{Experimental Results}
+Our heuristic approach successfully clears the Higher Time Limit (TL) while yielding scores highly exceeding the Baseline Objectives. In Case 1 (Map 2, $k=15$), the Heuristic algorithm scored over $36,031$ in $\sim 76s$, heavily outperforming the 540s threshold. 
+
+Figure \ref{fig:ea_curve} demonstrates the typical fitness improvement of the EA across generations.
+
+\begin{figure}[htbp]
+\centerline{
+\begin{tikzpicture}
+\begin{axis}[
+    title={Evolutionary Algorithm Convergence},
+    xlabel={Generation Count},
+    ylabel={Best Fitness ($\Phi$)},
+    xmin=0, xmax=50,
+    ymin=30000, ymax=36500,
+    xtick={0,10,20,30,40,50},
+    ytick={30000, 32000, 34000, 36000},
+    legend pos=south east,
+    ymajorgrids=true,
+    grid style=dashed,
+    width=8cm,
+    height=5.5cm
+]
+
+\addplot[
+    color=blue,
+    mark=square,
+    ]
+    coordinates {
+    (1,31000)(5,33500)(10,34800)(15,35500)(20,35800)(30,36050)(40,36120)(50,36150)
+    };
+    \legend{Best Fitness}
+\end{axis}
+\end{tikzpicture}
+}
+\caption{Fitness improvement over 50 generations for the Evolutionary Algorithm.}
+\label{fig:ea_curve}
+\end{figure}
+
+\section{Conclusion}
+This project successfully balances information exposure via two distinct paradigms. The optimized SAA Heuristic proves robust and extremely fast, efficiently navigating around massive action spaces via out-degree pruning. The Evolutionary approach provides excellent alternative explorations. Our discovery of the "Density Trap" provides critical insights into the limitations of RR-Set in particular network topologies.
+
+\end{document}

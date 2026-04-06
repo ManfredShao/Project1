@@ -117,7 +117,7 @@ def fitness_eval(x, n, k, I1, I2, live_graphs_1, live_graphs_2, graph):
 
     return phi/len(live_graphs_1)
 
-def generate_intial_population(pop_size, n, k):
+def generate_initial_population(pop_size, n, k):
     population = []
     for _ in range(pop_size):
         individual = [0] * (2*n)
@@ -164,7 +164,7 @@ def mutation(individual, n, k):
     return mutated
 
 def evolutionary_algorithm(n, graph, I1, I2, k, pop_size=50, generations=100):
-    population = generate_intial_population(pop_size, n, k)
+    population = generate_initial_population(pop_size, n, k)
     
     for gen in range(generations):
         live_graphs_1, live_graphs_2 = precompute_evol_data(graph, n)
