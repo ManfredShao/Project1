@@ -147,14 +147,20 @@ def mutation(individual, n, k):
     for i in range(2*n):
         if random.random() < mutation_rate:
             mutated[i] = 1 - mutated[i]  # Flip the bit
+
     if sum(mutated) > k:
         # If mutation exceeds budget, randomly flip some bits back to 0
         ones_indices = [i for i in range(2*n) if mutated[i] == 1]
         random.shuffle(ones_indices)
-        for idx in ones_indices:
+        for idx in ones_indices[:sum(mutated)-k]:
             mutated[idx] = 0
-            if sum(mutated) <= k:
-                break
+
+    elif sum(mutated) < k:
+        zero_indices = [i for i in range(2*n) if mutated[i] == 0]
+        random.shuffle(zero_indices)
+        for idx in zero_indices[:k-sum(mutated)]:
+            mutated[idx] = 1
+            
     return mutated
 
 def evolutionary_algorithm(n, graph, I1, I2, k, pop_size=50, generations=100):
